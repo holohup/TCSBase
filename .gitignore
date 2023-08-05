@@ -142,3 +142,6 @@ dmypy.json
 
 
 config.py
+celerybeat-schedule
+celerybeat-schedule.db
+
