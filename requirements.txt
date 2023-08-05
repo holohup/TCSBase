@@ -1,3 +1,5 @@
 fastapi>=0.100.1
 tinkoff-investments>=0.2.0b59
 redis>=4.6.0
+python-dotenv>=1.0.0
+celery>=5.3.1

@@ -1,21 +1,24 @@
 from collections import OrderedDict
 from fastapi import FastAPI
 from http import HTTPStatus as status
-from pydantic import BaseModel
+# from tinkoff.invest.schemas import Share, Future
 import redis
 import config
+# from json import loads
+from dotenv import load_dotenv
+import os
+from pickle import loads
+# from tinkoff.invest import utils
 
+load_dotenv()
+r = redis.Redis.from_url(os.getenv('REDIS_URL'))
 
-r = redis.Redis(
-    host=config.redis_host,
-    port=config.redis_port,
-    db=config.redis_db,
-    password=config.redis_password,
-)
-
-r.set('foo1', 'bar')
-value = r.get('foo1')
-print(value)
+value = r.get('MXU3')
+# print(value)
+# print(type(loads(value))) #dict
+print(loads(value))
+print(type(loads(value)))
+# print(value)
 
 app = FastAPI(name='TCS assets base')
 
