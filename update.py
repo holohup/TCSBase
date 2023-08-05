@@ -24,7 +24,7 @@ celery = Celery(
 celery.conf.beat_schedule = {
     'daily-db-update': {
         'task': 'update.update_db',
-        'schedule': crontab(minute=10)
+        'schedule': crontab(hour=1)
     }
 }
 
