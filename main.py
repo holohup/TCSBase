@@ -1,24 +1,34 @@
-from collections import OrderedDict
-from fastapi import FastAPI
-from http import HTTPStatus as status
-# from tinkoff.invest.schemas import Share, Future
-import redis
-import config
-# from json import loads
-from dotenv import load_dotenv
+import asyncio
+import logging
 import os
-from pickle import loads
-# from tinkoff.invest import utils
+import zoneinfo
+from datetime import datetime, timedelta
+from fastapi import status, Response
+from pickle import dumps, loads
+from typing import Union
+from fastapi.responses import JSONResponse
+import redis
+from fastapi.encoders import jsonable_encoder
+import redis.asyncio as a_redis
+from dotenv import load_dotenv
+from fastapi import FastAPI
+from fastapi_utils.tasks import repeat_every
+from tinkoff.invest.retrying.aio.client import AsyncRetryingClient
+from tinkoff.invest.retrying.settings import RetryClientSettings
+from tinkoff.invest.schemas import Bond, Currency, Etf, Future, Share
 
+MOSCOW_ZONE = zoneinfo.ZoneInfo('Europe/Moscow')
 load_dotenv()
 r = redis.Redis.from_url(os.getenv('REDIS_URL'))
 
-value = r.get('MXU3')
-# print(value)
-# print(type(loads(value))) #dict
-print(loads(value))
-print(type(loads(value)))
-# print(value)
+logging.basicConfig(
+    format="%(asctime)s %(levelname)s:%(message)s", level=logging.DEBUG
+)
+
+load_dotenv()
+RETRY_SETTINGS = RetryClientSettings(use_retry=True, max_retry_attempt=5)
+RO_TOKEN = os.getenv('TCS_RO_TOKEN')
+INSTRUMENTS = ('etfs', 'currencies', 'bonds', 'futures', 'shares')
 
 app = FastAPI(name='TCS assets base')
 
@@ -28,29 +38,55 @@ def health_check():
     return {'message': 'all OK'}
 
 
-@app.get('/numbers/{number}')
-def number_word(number: int):
-    return next(
-        (asset, result)
-        for asset, result in fake_assets.items()
-        if asset == str(number)
+@app.get('/ticker/{ticker}', response_class=JSONResponse)
+def get_asset_by_ticker(ticker: str, response: Response):
+    pickled_asset = r.get(ticker.upper())
+    if not pickled_asset:
+        response.status_code = status.HTTP_404_NOT_FOUND
+        return {'message': f'Asset {ticker} not found'}
+    asset: Union[Bond, Share, Etf, Future, Currency] = loads(pickled_asset)
+    data = jsonable_encoder(asset)
+    return data
+
+
+def asset_filter(asset) -> bool:
+    results = (asset.api_trade_available_flag, not asset.blocked_tca_flag)
+    return all(results)
+
+
+async def update():
+    assets = []
+    logging.info('Preparing to load assets from TCS API')
+    async with AsyncRetryingClient(RO_TOKEN, RETRY_SETTINGS) as client:
+        for inst in INSTRUMENTS:
+            insts = await getattr(client.instruments, inst)()
+            assets.extend(insts.instruments)
+    filtered = list(filter(asset_filter, assets))
+    new_data = {a.ticker: dumps(a) for a in filtered}
+    r = a_redis.from_url(os.getenv('REDIS_URL'), decode_responses=True)
+    logging.info('Updating the database')
+    result = await r.mset(new_data)
+    if result is True:
+        logging.info('Database update complete successfully')
+    all_keys = set(await r.keys())
+    deprecated_keys = all_keys - new_data.keys()
+    if deprecated_keys:
+        logging.warning(f'Deleting deprecated entries: {deprecated_keys}')
+        await r.delete(*(key for key in deprecated_keys))
+
+
+def seconds_till_tomorrow_night():
+    current_time = datetime.now(MOSCOW_ZONE)
+    one_am = (current_time + timedelta(days=1)).replace(
+        hour=1, minute=0, second=0
     )
+    return (one_am - current_time).seconds
 
 
-@app.post('/number/{num}')
-def change_number(num: int, new_number: str):
-    number = next(n for n in fake_numbers if num in n.keys())
-    number[num] = new_number
-    return {'status': status.OK, 'data': number}
-
-
-@app.get('/uids')
-def uid_by_ticker(limit: int = 1, offset: int = 1):
-    return fake_uids[offset:][:limit]
-
-
-d = OrderedDict()
-d['1'] = '111'
-d['0'] = '222'
-
-print(d['0'])
+@app.on_event('startup')
+@repeat_every(seconds=60 * 60 * 24)
+async def update_db_task():
+    await asyncio.sleep(seconds_till_tomorrow_night())
+    logging.info('Starting scheduled DB Update')
+    await update()
+    logging.info('DB Update complete')
