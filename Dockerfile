@@ -13,4 +13,4 @@ COPY --from=base /usr/local/bin/ /usr/local/bin/
 WORKDIR /app
 # RUN apt-get update && apt-get install libatomic1 -y
 COPY . .
-# CMD ["python3", "main.py"]
+CMD ["uvicorn", "main:app", "--reload", "--host", "0", "--port", "5001"]
