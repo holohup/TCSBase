@@ -61,15 +61,16 @@ async def update():
     filtered = list(filter(asset_filter, assets))
     new_data = {a.ticker: dumps(a) for a in filtered}
     logging.info('Updating the database')
-    result = await R.mset(new_data)
-    if result is True:
-        logging.info('Database update complete successfully')
-    all_keys = set(await R.keys())
-    deprecated_keys = all_keys - new_data.keys()
-    if deprecated_keys:
-        logging.warning(f'Deleting deprecated entries: {deprecated_keys}')
-        await R.delete(*(key for key in deprecated_keys))
-    await R.set('last_updated', datetime.utcnow().isoformat())
+    async with R as client:
+        result = await client.mset(new_data)
+        if result is True:
+            logging.info('Database update complete successfully')
+        all_keys = set(await client.keys())
+        deprecated_keys = all_keys - new_data.keys()
+        if deprecated_keys:
+            logging.warning(f'Deleting deprecated entries: {deprecated_keys}')
+            await client.delete(*(key for key in deprecated_keys))
+        await client.set('last_updated', datetime.utcnow().isoformat())
 
 
 def seconds_till_tomorrow_night():
@@ -84,7 +85,8 @@ def seconds_till_tomorrow_night():
 @repeat_every(seconds=24 * 60 * 60)
 async def update_db_task():
     logging.info('Starting scheduled DB Update')
-    last_update_time = await R.get('last_updated')
+    async with R as client:
+        last_update_time = await client.get('last_updated')
     if (
         not last_update_time
         or datetime.fromisoformat(last_update_time.decode()).date()

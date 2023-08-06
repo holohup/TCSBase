@@ -15,6 +15,7 @@ class TCSAssetRepo:
         self, ticker: str
     ) -> Union[Bond, Currency, Etf, Future, Share]:
         pickled_asset = R.get(ticker.upper())
+        R.close()
         if not pickled_asset:
             return None
         return loads(pickled_asset)
