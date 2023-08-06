@@ -3,15 +3,15 @@ import logging
 import os
 import zoneinfo
 from datetime import datetime, timedelta
-from fastapi import status, Response
 from pickle import dumps, loads
 from typing import Union
-from fastapi.responses import JSONResponse
+
 import redis
-from fastapi.encoders import jsonable_encoder
 import redis.asyncio as a_redis
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Response, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from fastapi_utils.tasks import repeat_every
 from tinkoff.invest.retrying.aio.client import AsyncRetryingClient
 from tinkoff.invest.retrying.settings import RetryClientSettings
@@ -24,8 +24,6 @@ r = redis.Redis.from_url(os.getenv('REDIS_URL'))
 logging.basicConfig(
     format="%(asctime)s %(levelname)s:%(message)s", level=logging.DEBUG
 )
-
-load_dotenv()
 RETRY_SETTINGS = RetryClientSettings(use_retry=True, max_retry_attempt=5)
 RO_TOKEN = os.getenv('TCS_RO_TOKEN')
 INSTRUMENTS = ('etfs', 'currencies', 'bonds', 'futures', 'shares')
@@ -73,6 +71,7 @@ async def update():
     if deprecated_keys:
         logging.warning(f'Deleting deprecated entries: {deprecated_keys}')
         await r.delete(*(key for key in deprecated_keys))
+    await r.set('last_updated', datetime.utcnow().isoformat())
 
 
 def seconds_till_tomorrow_night():
@@ -84,8 +83,15 @@ def seconds_till_tomorrow_night():
 
 
 @app.on_event('startup')
-@repeat_every(seconds=60 * 60 * 24)
+@repeat_every(seconds=24 * 60 * 60)
 async def update_db_task():
+    last_update_time = r.get('last_updated')
+    if (
+        not last_update_time
+        or datetime.fromisoformat(last_update_time.decode()).date()
+        < datetime.utcnow().date()
+    ):
+        await update()
     await asyncio.sleep(seconds_till_tomorrow_night())
     logging.info('Starting scheduled DB Update')
     await update()
