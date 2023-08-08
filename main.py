@@ -70,7 +70,9 @@ async def update():
         if deprecated_keys:
             logging.warning(f'Deleting deprecated entries: {deprecated_keys}')
             await client.delete(*(key for key in deprecated_keys))
-        await client.set('last_updated', datetime.utcnow().isoformat())
+        update_time = datetime.utcnow().isoformat()
+        await client.set('last_updated', update_time)
+        logging.info(f'Update last_updated time to {update_time}')
 
 
 def seconds_till_tomorrow_night():
@@ -82,17 +84,19 @@ def seconds_till_tomorrow_night():
 
 
 @app.on_event('startup')
-@repeat_every(seconds=24 * 60 * 60)
+@repeat_every(seconds=10)
 async def update_db_task():
     logging.info('Starting scheduled DB Update')
     async with R as client:
         last_update_time = await client.get('last_updated')
     if (
         not last_update_time
-        or datetime.fromisoformat(last_update_time.decode()).date()
+        or datetime.fromisoformat(last_update_time).date()
         < datetime.utcnow().date()
     ):
         await update()
-    await asyncio.sleep(seconds_till_tomorrow_night())
+    sleep_seconds = seconds_till_tomorrow_night()
+    logging.info(f'Sleeping {sleep_seconds // 60} minutes till next db update.')
+    await asyncio.sleep(sleep_seconds)
     await update()
     logging.info('DB Update complete')
