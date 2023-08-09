@@ -86,7 +86,7 @@ def seconds_till_tomorrow_night():
 
 
 @app.on_event('startup')
-@repeat_every(seconds=10)
+@repeat_every(seconds=60 * 60 * 24)
 async def update_db_task():
     logging.info('Starting scheduled DB Update')
     async with R as client:

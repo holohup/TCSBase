@@ -11,10 +11,8 @@ R = redis.Redis.from_url(os.getenv('REDIS_URL'))
 
 
 class TCSAssetRepo:
-    def __getitem__(
-        self, ticker: str
-    ) -> Union[Bond, Currency, Etf, Future, Share]:
-        pickled_asset = R.get(ticker.upper())
+    def __getitem__(self, id_: str) -> Bond | Currency | Etf | Future | Share:
+        pickled_asset = R.get(id_.upper())
         R.close()
         if not pickled_asset:
             return None
