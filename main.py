@@ -36,12 +36,13 @@ def health_check():
     return {'message': 'all OK'}
 
 
-@app.get('/ticker/{ticker}', response_class=JSONResponse)
-def get_asset_by_ticker(ticker: str, response: Response):
-    asset = REPO[ticker]
+# asset_id - ticker or uid
+@app.get('/asset/{asset_id}', response_class=JSONResponse)
+def get_asset_by_ticker(asset_id: str, response: Response):
+    asset = REPO[asset_id]
     if not asset:
         response.status_code = status.HTTP_404_NOT_FOUND
-        return {'message': f'Asset {ticker} not found'}
+        return {'message': f'Asset {asset_id} not found'}
     data = jsonable_encoder(asset)
     return data
 
@@ -59,7 +60,8 @@ async def update():
             insts = await getattr(client.instruments, inst)()
             assets.extend(insts.instruments)
     filtered = list(filter(asset_filter, assets))
-    new_data = {a.ticker: dumps(a) for a in filtered}
+    new_data = {a.ticker.upper(): dumps(a) for a in filtered}
+    new_data.update({a.uid.upper(): dumps(a) for a in filtered})
     logging.info('Updating the database')
     async with R as client:
         result = await client.mset(new_data)
