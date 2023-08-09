@@ -1,12 +1,10 @@
 import asyncio
 import logging
-import os
 import zoneinfo
 from datetime import datetime, timedelta
 from pickle import dumps
 
 import redis.asyncio as a_redis
-from dotenv import load_dotenv
 from fastapi import FastAPI, Response, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
@@ -14,21 +12,21 @@ from fastapi_utils.tasks import repeat_every
 from tinkoff.invest.retrying.aio.client import AsyncRetryingClient
 from tinkoff.invest.retrying.settings import RetryClientSettings
 
+import settings
 from repo import TCSAssetRepo
 
 MOSCOW_ZONE = zoneinfo.ZoneInfo('Europe/Moscow')
-load_dotenv()
 
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)s:%(message)s", level=logging.DEBUG
 )
 RETRY_SETTINGS = RetryClientSettings(use_retry=True, max_retry_attempt=5)
-RO_TOKEN = os.getenv('TCS_RO_TOKEN')
+RO_TOKEN = settings.get('TCS_RO_TOKEN')
 INSTRUMENTS = ('etfs', 'currencies', 'bonds', 'futures', 'shares')
 REPO = TCSAssetRepo()
 app = FastAPI(name='TCS assets base')
-R = a_redis.from_url(os.getenv('REDIS_URL'), decode_responses=True)
+R = a_redis.from_url(settings.get('TCS_ASSETS_URL'), decode_responses=True)
 
 
 @app.get('/health')
@@ -98,7 +96,9 @@ async def update_db_task():
     ):
         await update()
     sleep_seconds = seconds_till_tomorrow_night()
-    logging.info(f'Sleeping {sleep_seconds // 60} minutes till next db update.')
+    logging.info(
+        f'Sleeping {sleep_seconds // 60} minutes till next db update.'
+    )
     await asyncio.sleep(sleep_seconds)
     await update()
     logging.info('DB Update complete')

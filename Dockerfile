@@ -10,4 +10,4 @@ COPY --from=base /usr/local/lib/python3.11/site-packages/ /usr/local/lib/python3
 COPY --from=base /usr/local/bin/ /usr/local/bin/
 WORKDIR /app
 COPY . .
-CMD ["uvicorn", "main:app", "--reload", "--host", "0", "--port", "5001"]
+CMD ["uvicorn", "main:app", "--host", "0", "--port", "5001"]
